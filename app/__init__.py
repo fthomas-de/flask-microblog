@@ -37,3 +37,7 @@ if not app.debug:
 
 from app import views, models
 
+from momentjs import momentjs
+app.jinja_env.globals['momentjs'] = momentjs
+
+
