@@ -1,11 +1,11 @@
 from flask import render_template, flash, redirect, session, url_for, request, g
 from flask.ext.login import login_user, logout_user, current_user, login_required
 from app import app, db, lm, oid
-from datetime import datetime
 from forms import LoginForm, EditForm, PostForm, SearchForm
 from models import User, ROLE_USER, ROLE_ADMIN, Post
-from config import POSTS_PER_PAGE, MAX_SEARCH_RESULTS
+from datetime import datetime
 from emails import follower_notification
+from config import POSTS_PER_PAGE, MAX_SEARCH_RESULTS
 
 @lm.user_loader
 def load_user(id):
@@ -19,7 +19,16 @@ def before_request():
         db.session.add(g.user)
         db.session.commit()
         g.search_form = SearchForm()
-    
+
+@app.errorhandler(404)
+def internal_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
 @app.route('/', methods = ['GET', 'POST'])
 @app.route('/index', methods = ['GET', 'POST'])
 @app.route('/index/<int:page>', methods = ['GET', 'POST'])
@@ -56,7 +65,7 @@ def login():
 def after_login(resp):
     if resp.email is None or resp.email == "":
         flash('Invalid login. Please try again.')
-        redirect(url_for('login'))
+        return redirect(url_for('login'))
     user = User.query.filter_by(email = resp.email).first()
     if user is None:
         nickname = resp.nickname
@@ -80,7 +89,7 @@ def after_login(resp):
 def logout():
     logout_user()
     return redirect(url_for('index'))
-
+    
 @app.route('/user/<nickname>')
 @app.route('/user/<nickname>/<int:page>')
 @login_required
@@ -89,7 +98,7 @@ def user(nickname, page = 1):
     if user == None:
         flash('User ' + nickname + ' not found.')
         return redirect(url_for('index'))
-    posts = user.posts.order_by(Post.timestamp.desc()).paginate(page, POSTS_PER_PAGE, False)
+    posts = user.posts.paginate(page, POSTS_PER_PAGE, False)
     return render_template('user.html',
         user = user,
         posts = posts)
@@ -105,7 +114,7 @@ def edit():
         db.session.commit()
         flash('Your changes have been saved.')
         return redirect(url_for('edit'))
-    else:
+    elif request.method != "POST":
         form.nickname.data = g.user.nickname
         form.about_me.data = g.user.about_me
     return render_template('edit.html',
@@ -165,11 +174,3 @@ def search_results(query):
         query = query,
         results = results)
 
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return render_template('500.html'), 500
